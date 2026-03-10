@@ -114,14 +114,15 @@ def match_category(item, category):
     return any(k in text for k in kws)
 
 def fetch_clawhub_trending(max_items=10):
-    """从 ClawHub 获取热门技能"""
+    """从 ClawHub 获取热门技能（简化版）"""
     try:
         import subprocess
         
-        # 使用 clawhub CLI 获取热门技能（按 rating 排序）
+        # 使用 clawhub CLI 获取热门技能（按 rating 排序，纯文本输出）
         result = subprocess.run(
-            ['clawhub', 'explore', '--limit', str(max_items), '--sort', 'rating', '--json'],
-            stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+            ['clawhub', 'explore', '--limit', str(max_items), '--sort', 'rating'],
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
             timeout=30
         )
         
@@ -129,28 +130,59 @@ def fetch_clawhub_trending(max_items=10):
             log.warning(f'ClawHub 查询失败: {result.stderr.decode()}')
             return []
         
-        # 解析 JSON 输出
-        import json
-        data = json.loads(result.stdout.decode('utf-8', errors='ignore'))
-        items = data.get('items', [])
+        # 解析纯文本输出
+        output = result.stdout.decode('utf-8', errors='ignore')
+        items = []
         
-        # 转换为统一格式
-        results = []
-        for item in items[:max_items]:
-            slug = item.get('slug', '')
-            display_name = item.get('displayName', slug)
-            summary = item.get('summary', '')[:200]
-            stats = item.get('stats', {})
-            stars = stats.get('stars', 0)
-            downloads = stats.get('downloads', 0)
+        for line in output.split('
+')[:max_items]:
+            line = line.strip()
+            if not line or line.startswith('-'):
+                continue
             
-            results.append({
+            # 按空格分割
+            parts = line.split()
+            if len(parts) < 4:
+                continue
+            
+            slug = parts[0]
+            display_name = slug.replace('-', ' ').title()
+            
+            # 解析 "2d ago"
+            time_ago = ''
+            if len(parts) > 1:
+                time_ago = ' '.join([p for p in parts if 'ago' in p])
+            
+            # 解析 "⭐ 1000 stars (10k installs)"
+            stars = 0
+            downloads = 0
+            for i, part in enumerate(parts):
+                if 'stars' in part:
+                    # 提取星数
+                    star_match = ''.join([c for c in part if c.isdigit()])
+                    if star_match:
+                        stars = int(star_match)
+                elif 'installs' in part:
+                    # 解析下载数
+                    install_match = part.replace(')', '').replace('(', '').replace('installs', '').strip()
+                    if install_match:
+                        # 处理 10k -> 10000
+                        if 'k' in install_match:
+                            base = float(install_match.replace('k', ''))
+                            downloads = int(base * 1000)
+                        elif 'm' in install_match:
+                            base = float(install_match.replace('m', ''))
+                            downloads = int(base * 1000000)
+                        else:
+                            downloads = int(install_match) if install_match.isdigit() else 0
+            
+            items.append({
                 'title': display_name,
-                'summary': summary,
+                'summary': f'ClawHub 热门技能',
                 'link': f'https://clawhub.ai/skills/{slug}',
-                'pub_date': item.get('updatedAt', ''),
-                'image': '',  # ClawHub 暂不提供图片
-                'source': f'⭐ {stars} | 📥 {downloads}',
+                'pub_date': time_ago,
+                'image': '',
+                'source': f'⭐ {stars}'
             })
         
         return results
