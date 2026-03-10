@@ -86,6 +86,12 @@ export const api = {
     ),
   remoteSkillsList: () =>
     fetchJ<RemoteSkillsListResult>(`${API_BASE}/api/remote-skills-list`),
+  
+  // GitHub 管理
+  getGitHubConfig: () => fetchJ<any>(`${API_BASE}/api/github-config`),
+  testGitHubConnection: () => fetchJ<any>(`${API_BASE}/api/github-test`),
+  pushGitHubRepo: (name: string, msg: string) => postJ<any>(`${API_BASE}/api/github-push/${name}`, { message: msg }),
+  pullGitHubRepo: (name: string) => fetchJ<any>(`${API_BASE}/api/github-pull/${name}`),
   updateRemoteSkill: (agentId: string, skillName: string) =>
     postJ<ActionResult>(`${API_BASE}/api/update-remote-skill`, { agentId, skillName }),
   removeRemoteSkill: (agentId: string, skillName: string) =>
