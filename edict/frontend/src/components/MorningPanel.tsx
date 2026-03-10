@@ -10,7 +10,7 @@ const CAT_META: Record<string, { icon: string; color: string; desc: string }> = 
   'AI大模型': { icon: '🤖', color: '#a07aff', desc: 'AI与大模型进展' },
 };
 
-const DEFAULT_CATS = ['政治', '军事', '经济', 'AI大模型'];
+const DEFAULT_CATS = ['政治', '军事', '经济', 'AI大模型', 'ClawHub'];
 
 export default function MorningPanel() {
   const morningBrief = useStore((s) => s.morningBrief);
