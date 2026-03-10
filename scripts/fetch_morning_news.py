@@ -31,6 +31,7 @@ FEEDS = {
         ('BBC Business', 'https://feeds.bbci.co.uk/news/business/rss.xml'),
         ('CNBC', 'https://search.cnbc.com/rs/search/combinedcms/view.xml?partnerId=wrss01&id=100003114'),
     ],
+    'ClawHub': [],  # 从 ClawHub API 动态获取
     'AI大模型': [
         ('Hacker News', 'https://hnrss.org/newest?q=AI+LLM+model&points=50'),
         ('VentureBeat AI', 'https://venturebeat.com/category/ai/feed/'),
@@ -41,6 +42,7 @@ FEEDS = {
 CATEGORY_KEYWORDS = {
     '军事': ['war', 'military', 'troops', 'attack', 'missile', 'army', 'navy', 'weapons',
               '战', '军', '导弹', '士兵', 'ukraine', 'russia', 'china sea', 'nato'],
+    'ClawHub': [],  # 从 ClawHub API 动态获取
     'AI大模型': ['ai', 'llm', 'gpt', 'claude', 'gemini', 'openai', 'anthropic', 'deepseek',
                 'machine learning', 'neural', 'model', '大模型', '人工智能', 'chatgpt'],
 }
@@ -52,7 +54,7 @@ def curl_rss(url, timeout=10):
             ['curl', '-s', '--max-time', str(timeout), '-L',
              '-A', 'Mozilla/5.0 (compatible; MorningBrief/1.0)',
              url],
-            capture_output=True, timeout=timeout+2
+            stdout=subprocess.PIPE, stderr=subprocess.PIPE, timeout=timeout+2
         )
         return r.stdout.decode('utf-8', errors='ignore')
     except Exception:
@@ -110,6 +112,51 @@ def match_category(item, category):
         return True
     text = (item['title'] + ' ' + item['desc']).lower()
     return any(k in text for k in kws)
+
+def fetch_clawhub_trending(max_items=10):
+    """从 ClawHub 获取热门技能"""
+    try:
+        import subprocess
+        
+        # 使用 clawhub CLI 获取热门技能（按 rating 排序）
+        result = subprocess.run(
+            ['clawhub', 'explore', '--limit', str(max_items), '--sort', 'rating', '--json'],
+            stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+            timeout=30
+        )
+        
+        if result.returncode != 0:
+            log.warning(f'ClawHub 查询失败: {result.stderr.decode()}')
+            return []
+        
+        # 解析 JSON 输出
+        import json
+        data = json.loads(result.stdout.decode('utf-8', errors='ignore'))
+        items = data.get('items', [])
+        
+        # 转换为统一格式
+        results = []
+        for item in items[:max_items]:
+            slug = item.get('slug', '')
+            display_name = item.get('displayName', slug)
+            summary = item.get('summary', '')[:200]
+            stats = item.get('stats', {})
+            stars = stats.get('stars', 0)
+            downloads = stats.get('downloads', 0)
+            
+            results.append({
+                'title': display_name,
+                'summary': summary,
+                'link': f'https://clawhub.ai/skills/{slug}',
+                'pub_date': item.get('updatedAt', ''),
+                'image': '',  # ClawHub 暂不提供图片
+                'source': f'⭐ {stars} | 📥 {downloads}',
+            })
+        
+        return results
+    except Exception as e:
+        log.error(f'ClawHub 采集异常: {e}')
+        return []
 
 def fetch_category(category, feeds, max_items=5):
     """抓取一个分类的新闻"""
@@ -208,7 +255,17 @@ def main():
         'categories': {}
     }
 
+    # ClawHub 特殊处理（直接从 API 获取热门技能）
+    if 'ClawHub' in enabled_cats:
+        log.info('  采集 ClawHub 热门技能...')
+        clawhub_items = fetch_clawhub_trending(max_items=5)
+        result['categories']['ClawHub'] = clawhub_items
+        log.info(f'    ClawHub: {len(clawhub_items)} 条')
+    
+    # 采集其他分类
     for category, feeds in merged_feeds.items():
+        if category == 'ClawHub':
+            continue
         log.info(f'  采集 {category}...')
         items = fetch_category(category, feeds)
         # Boost items matching user keywords
